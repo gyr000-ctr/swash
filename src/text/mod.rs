@@ -12,6 +12,7 @@ mod lang_data;
 mod unicode;
 mod unicode_data;
 
+pub mod bidi;
 pub mod cluster;
 
 pub use analyze::{analyze, Analyze, WordBreakStrength};
