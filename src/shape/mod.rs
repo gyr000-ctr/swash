@@ -478,6 +478,10 @@ impl<'a> ShaperBuilder<'a> {
                     }
                 }
             }
+            // Apply cross axis deltas from an avar version 2 table, if
+            // present. Evaluation uses a fixed size buffer and does not
+            // allocate.
+            let _ = vars.apply_avar2(self.coords.as_mut_slice());
         }
         self
     }

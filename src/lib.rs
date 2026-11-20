@@ -68,7 +68,7 @@ pub use setting::Setting;
 pub use strike::BitmapStrike;
 pub use string::{LocalizedString, StringId};
 pub use tag::{tag_from_bytes, tag_from_str_lossy, Tag};
-pub use variation::{Instance, Variation};
+pub use variation::{Avar2Error, Instance, Variation};
 
 /// Collection of various iterators over metadata contained in a font.
 pub mod iter {

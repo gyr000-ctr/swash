@@ -422,6 +422,21 @@ impl<'a> ScalerBuilder<'a> {
                     }
                 }
             }
+            // Apply cross axis deltas from an avar version 2 table, if
+            // present. Evaluation uses a fixed size buffer and does not
+            // allocate.
+            let len = self.coords.len();
+            if len != 0 && len <= internal::var::MAX_AVAR2_AXES {
+                let mut coords = [0i16; internal::var::MAX_AVAR2_AXES];
+                for (coord, c) in coords.iter_mut().zip(self.coords.iter()) {
+                    *coord = c.to_bits();
+                }
+                if vars.apply_avar2(&mut coords[..len]).is_ok() {
+                    for (c, coord) in self.coords.iter_mut().zip(coords.iter()) {
+                        *c = SkrifaNormalizedCoord::from_bits(*coord);
+                    }
+                }
+            }
         }
         self
     }

@@ -5,6 +5,8 @@ use super::{
     FontRef, NormalizedCoord, Tag,
 };
 
+pub use super::internal::var::Avar2Error;
+
 /// Proxy for rematerializing variations collections.
 #[derive(Copy, Clone)]
 pub struct VariationsProxy {
@@ -92,6 +94,9 @@ impl<'a> Variations<'a> {
 
     /// Returns an iterator over the set of normalized coordinates
     /// corresponding to the specified variation settings.
+    ///
+    /// If the font contains an `avar` version 2 table, its deltas are
+    /// applied to the resulting coordinates.
     pub fn normalized_coords<I>(&self, settings: I) -> impl Iterator<Item = NormalizedCoord> + Clone
     where
         I: IntoIterator,
@@ -110,7 +115,21 @@ impl<'a> Variations<'a> {
                 }
             }
         }
+        let _ = self.apply_avar2(&mut coords[..len]);
         (0..len).map(move |i| coords[i])
+    }
+
+    /// Applies deltas from an `avar` version 2 table to the specified
+    /// normalized coordinates.
+    ///
+    /// The coordinates are expected to be fully normalized (including
+    /// application of `avar` version 1 segment maps) and are modified in
+    /// place. If the font does not contain an `avar` version 2 table,
+    /// this is a no-op and returns `Ok(())`. The coordinates are left
+    /// unmodified if an error is returned or if the font contains more
+    /// than 64 axes.
+    pub fn apply_avar2(&self, coords: &mut [NormalizedCoord]) -> Result<(), Avar2Error> {
+        apply_avar2(self.font.data, self.avar, coords)
     }
 }
 
@@ -169,6 +188,11 @@ impl<'a> Variation<'a> {
     }
 
     /// Computes a normalized coordinate for the specified value.
+    ///
+    /// This applies only the per-axis segment map from an `avar` version
+    /// 1 table. For fonts with an `avar` version 2 table, cross axis
+    /// deltas must be applied to the coordinate set as a whole; see
+    /// [`Variations::normalized_coords`] and [`Variations::apply_avar2`].
     pub fn normalize(&self, value: f32) -> NormalizedCoord {
         let avar = if self.avar != 0 {
             Some((self.font.data, self.avar))
@@ -300,6 +324,10 @@ impl<'a> Instance<'a> {
     }
 
     /// Returns an iterator over the normalized coordinates for the instance.
+    ///
+    /// If the font contains an `avar` version 2 table, its deltas are
+    /// applied to the resulting coordinates. Coordinates beyond the 64th
+    /// axis are truncated.
     pub fn normalized_coords(&self) -> impl Iterator<Item = NormalizedCoord> + 'a {
         let avar = if self.parent.avar != 0 {
             Some((self.parent.font.data, self.parent.avar))
@@ -307,9 +335,18 @@ impl<'a> Instance<'a> {
             None
         };
         let fvar = self.parent.fvar;
-        (0..fvar.axis_count())
-            .map(move |i| fvar.get_axis(i).unwrap_or_default())
-            .zip(self.inner.values)
-            .map(move |(axis, value)| axis.normalized_coord(value, avar))
+        let len = (fvar.axis_count() as usize).min(MAX_AVAR2_AXES);
+        let mut coords = [0i16; MAX_AVAR2_AXES];
+        for (i, coord) in coords[..len].iter_mut().enumerate() {
+            let axis = fvar.get_axis(i as u16).unwrap_or_default();
+            let value = self.inner.values.get_or(i, Default::default());
+            *coord = axis.normalized_coord(value, avar);
+        }
+        let _ = apply_avar2(
+            self.parent.font.data,
+            self.parent.avar,
+            &mut coords[..len],
+        );
+        (0..len).map(move |i| coords[i])
     }
 }
